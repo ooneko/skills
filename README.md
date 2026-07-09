@@ -9,6 +9,7 @@ Each subdirectory is a self-contained skill with a `SKILL.md` entry point.
 | Skill | What it does |
 |-------|--------------|
 | [chrome-bookmark-reorganize](chrome-bookmark-reorganize/) | Reorganize Chrome bookmarks on macOS — handles the local `Bookmarks` file, Google sync conflicts, and Chromium checksum recomputation. |
+| [to-kanban](to-kanban/) | 把一份需求（PRD / 需求文档 / 一句口述）拆成一张可直接执行的 Obsidian kanban-plugin 看板——列管时间窗口、标签管功能模块、勾管状态，并预留 icafe 卡号回填接口。 |
 
 ## Install
 
