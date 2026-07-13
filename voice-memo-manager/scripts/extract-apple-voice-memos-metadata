@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
+"""Export Apple Voice Memos cloud recordings to CSV."""
+
+import argparse
+import csv
+import os
+import sqlite3
+import struct
+import sys
+from datetime import datetime, timezone, timedelta
+
+CORE_DATA_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
+VOICE_MEMOS_PATH = "~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/"
+
+
+def get_default_database_path():
+    """Auto-detect the CloudRecordings.db path."""
+    recordings_dir = os.path.expanduser(VOICE_MEMOS_PATH)
+    db_path = os.path.join(recordings_dir, "CloudRecordings.db")
+    if not os.path.exists(db_path):
+        print(f"Error: Database not found at {db_path}", file=sys.stderr)
+        print("Voice Memos iCloud sync may not be enabled on this Mac.", file=sys.stderr)
+        sys.exit(1)
+    return db_path
+
+
+def format_duration(seconds):
+    if seconds is None:
+        return ""
+    total = int(seconds)
+    h, remainder = divmod(total, 3600)
+    m, s = divmod(remainder, 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+def read_atom_header(f):
+    header = f.read(8)
+    if len(header) < 8:
+        return None, None
+
+    size = struct.unpack(">I", header[:4])[0]
+    atom_type = header[4:8].decode("ascii", errors="ignore")
+
+    if size == 1:
+        extended_size = struct.unpack(">Q", f.read(8))[0]
+        return atom_type, extended_size
+
+    return atom_type, size
+
+
+def find_atom(f, end_pos, target_type):
+    while f.tell() < end_pos:
+        current_pos = f.tell()
+        atom_type, atom_size = read_atom_header(f)
+
+        if atom_type is None or atom_size == 0:
+            return None
+
+        atom_end = current_pos + atom_size
+
+        if atom_type == target_type:
+            return atom_end
+
+        f.seek(atom_end)
+
+    return None
+
+
+def has_transcript(m4a_path):
+    """Check whether the .m4a embeds a tsrp transcript atom.
+
+    Walks moov > trak > udta > tsrp, mirroring the lookup the transcript
+    extraction script performs.
+    """
+    try:
+        with open(m4a_path, "rb") as f:
+            end_pos = f.seek(0, 2)
+            f.seek(0)
+            for atom_type in ("moov", "trak", "udta", "tsrp"):
+                end_pos = find_atom(f, end_pos, atom_type)
+                if end_pos is None:
+                    return "no"
+            return "yes"
+    except OSError:
+        return "no"
+
+
+def core_data_to_iso8601(timestamp):
+    if timestamp is None:
+        return ""
+    dt = CORE_DATA_EPOCH + timedelta(seconds=timestamp)
+    return dt.isoformat()
+
+
+def iso_to_core_data(iso_date):
+    """Convert an ISO date string (YYYY-MM-DD) to Core Data timestamp."""
+    dt = datetime.strptime(iso_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return (dt - CORE_DATA_EPOCH).total_seconds()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Query Apple Voice Memos metadata")
+    parser.add_argument("--limit", type=int, default=10, help="Max rows to return (default: 10)")
+    parser.add_argument("--offset", type=int, default=0, help="Skip first N results")
+    parser.add_argument("--search", type=str, help="Filter by title (case-insensitive substring match)")
+    parser.add_argument("--after", type=str, help="Only recordings after this date (YYYY-MM-DD)")
+    parser.add_argument("--before", type=str, help="Only recordings before this date (YYYY-MM-DD)")
+    parser.add_argument("--print-path", action="store_true", help="Print the Voice Memos path and exit")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    if args.print_path:
+        print(VOICE_MEMOS_PATH)
+        return
+
+    db_path = get_default_database_path()
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+
+    where_clauses = []
+    params = []
+
+    if args.search:
+        where_clauses.append("ZENCRYPTEDTITLE LIKE ?")
+        params.append(f"%{args.search}%")
+
+    if args.after:
+        where_clauses.append("ZDATE >= ?")
+        params.append(iso_to_core_data(args.after))
+
+    if args.before:
+        where_clauses.append("ZDATE <= ?")
+        params.append(iso_to_core_data(args.before))
+
+    where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    query = f"SELECT ZENCRYPTEDTITLE, ZDATE, ZDURATION, ZPATH FROM ZCLOUDRECORDING{where_sql} ORDER BY ZDATE DESC LIMIT ? OFFSET ?"
+    params.extend([args.limit, args.offset])
+
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    recordings_dir = os.path.dirname(db_path)
+    writer = csv.writer(sys.stdout)
+    writer.writerow(["title", "date", "duration", "path", "has_transcript"])
+    for title, date, duration, path in rows:
+        transcript = has_transcript(os.path.join(recordings_dir, path)) if path else "no"
+        writer.writerow([title, core_data_to_iso8601(date), format_duration(duration), path, transcript])
+
+
+if __name__ == "__main__":
+    main()

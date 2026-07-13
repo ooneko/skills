@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
+"""Delete an Apple Voice Memo: remove the .m4a file and its database record."""
+
+import argparse
+import os
+import shutil
+import sqlite3
+import sys
+
+VOICE_MEMOS_PATH = "~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/"
+TRIGGER_TABLE = "ZCLOUDRECORDING"
+
+
+def resolve_file_path(filename):
+    """Resolve file path, auto-detecting recordings directory if needed."""
+    if os.path.isabs(filename) or os.path.exists(filename):
+        return filename
+    recordings_dir = os.path.expanduser(VOICE_MEMOS_PATH)
+    full_path = os.path.join(recordings_dir, filename)
+    if os.path.exists(full_path):
+        return full_path
+    return filename
+
+
+def get_database_path():
+    """Auto-detect the CloudRecordings.db path."""
+    recordings_dir = os.path.expanduser(VOICE_MEMOS_PATH)
+    db_path = os.path.join(recordings_dir, "CloudRecordings.db")
+    if not os.path.exists(db_path):
+        print(f"Error: Database not found at {db_path}", file=sys.stderr)
+        print("Voice Memos iCloud sync may not be enabled on this Mac.", file=sys.stderr)
+        sys.exit(1)
+    return db_path
+
+
+def resolve_filename_for_db(file_path):
+    """Extract the relative filename used in the ZPATH column."""
+    return os.path.basename(file_path)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Delete an Apple Voice Memo (audio file + database record)."
+    )
+    parser.add_argument(
+        "filename",
+        help="The .m4a file to delete (absolute path or filename in Recordings dir).",
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip database backup (default: backup then auto-clean on success).",
+    )
+    args = parser.parse_args()
+
+    file_path = resolve_file_path(args.filename)
+    if not os.path.exists(file_path):
+        print(f"Error: File not found: {file_path}", file=sys.stderr)
+        sys.exit(1)
+
+    db_path = get_database_path()
+    db_filename = resolve_filename_for_db(file_path)
+
+    # --- 1. Delete the audio file ---
+    os.remove(file_path)
+    print(f"Deleted file: {file_path}")
+
+    # --- 2. Backup database ---
+    backup_path = db_path + ".bak"
+    if not args.no_backup:
+        shutil.copy2(db_path, backup_path)
+        print(f"Database backed up: {backup_path}")
+
+    try:
+        conn = sqlite3.connect(db_path)
+
+        # --- 3. Find the record ---
+        rows = conn.execute(
+            f"SELECT Z_PK, ZFOLDER FROM {TRIGGER_TABLE} WHERE ZPATH LIKE ?",
+            (f"%{db_filename}%",),
+        ).fetchall()
+
+        if not rows:
+            print(f"Warning: no database record found for {db_filename}")
+            conn.close()
+            if not args.no_backup and os.path.exists(backup_path):
+                os.remove(backup_path)
+            return
+
+        rec_pk, folder_pk = rows[0]
+        print(f"Target record: Z_PK={rec_pk}, ZFOLDER={folder_pk or 'None'}")
+
+        # --- 4. Temporarily drop Core Data triggers ---
+        triggers = conn.execute(
+            "SELECT name, sql FROM sqlite_master "
+            f"WHERE type='trigger' AND tbl_name='{TRIGGER_TABLE}'"
+        ).fetchall()
+        for name, _ in triggers:
+            conn.execute(f"DROP TRIGGER IF EXISTS {name}")
+
+        # --- 5. Delete the record ---
+        cur = conn.execute(
+            f"DELETE FROM {TRIGGER_TABLE} WHERE Z_PK = ?", (rec_pk,)
+        )
+        print(f"Deleted {cur.rowcount} database record(s)")
+
+        # --- 6. Fix folder recording count ---
+        if folder_pk is not None:
+            conn.execute(
+                "UPDATE ZFOLDER SET ZCOUNTOFRECORDINGS = IFNULL(ZCOUNTOFRECORDINGS, 1) - 1 "
+                "WHERE Z_PK = ?",
+                (folder_pk,),
+            )
+            print(f"Updated folder {folder_pk} recording count")
+
+        # --- 7. Restore triggers ---
+        for _, sql in triggers:
+            conn.execute(sql)
+
+        conn.commit()
+        conn.close()
+
+        # --- 8. Verify ---
+        remaining = sqlite3.connect(db_path).execute(
+            f"SELECT COUNT(*) FROM {TRIGGER_TABLE} WHERE Z_PK = ?", (rec_pk,)
+        ).fetchone()[0]
+        if remaining != 0:
+            print(f"Error: record still exists after deletion (count={remaining})", file=sys.stderr)
+            sys.exit(1)
+
+        print("Verification passed: record removed, file deleted.")
+
+        # --- 9. Clean up backup ---
+        if not args.no_backup and os.path.exists(backup_path):
+            os.remove(backup_path)
+            print(f"Backup cleaned up: {backup_path}")
+
+    except Exception as e:
+        print(f"Error during database cleanup: {e}", file=sys.stderr)
+        if not args.no_backup and os.path.exists(backup_path):
+            shutil.copy2(backup_path, db_path)
+            print(f"Database restored from backup: {backup_path}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
