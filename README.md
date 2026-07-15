@@ -15,6 +15,8 @@ Each subdirectory is a self-contained skill with a `SKILL.md` entry point.
 | [publish-skill](publish-skill/) | 把本地 Skill 发布到 GitHub 仓库 ooneko/skills——复制目录、更新 README 表格、提交并推送。 |
 | [review-until-clean](review-until-clean/) | 一个驱动代码库走向零 review 问题的紧循环：独立派发 reviewer，亲自逐一核实每条发现，只修必须修的，循环直到干净。 |
 | [humanize-chinese-until-clean](humanize-chinese-until-clean/) | 通过 review→修改 循环把一个中文文件里的翻译腔改到零：每轮派 reviewer 挑机翻味，自己核实每条发现，改掉真问题，连续两轮零新发现即停。 |
+| [push-to-icode-review](push-to-icode-review/) | 一键完成「创建 iCafe 卡片 → git commit 绑卡 → push iCode 评审 → 追踪 iPipe 构建结果」全流程，手动触发。 |
+| [kanban-icafe-sync](kanban-icafe-sync/) | 从 iCafe 拉取卡片状态，更新 Obsidian Kanban 看板，并上传到知识库——以 status-changes 为完成时间准绳，自动剥离 Obsidian 专属结构。 |
 
 ## Install
 
