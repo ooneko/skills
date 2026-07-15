@@ -14,6 +14,7 @@ Each subdirectory is a self-contained skill with a `SKILL.md` entry point.
 | [primary-contradiction](primary-contradiction/) | 从一段讨论或一件事里识别出主要矛盾与次要矛盾，锚定起决定作用的那处对立，并指出先动哪里。 |
 | [publish-skill](publish-skill/) | 把本地 Skill 发布到 GitHub 仓库 ooneko/skills——复制目录、更新 README 表格、提交并推送。 |
 | [review-until-clean](review-until-clean/) | 一个驱动代码库走向零 review 问题的紧循环：独立派发 reviewer，亲自逐一核实每条发现，只修必须修的，循环直到干净。 |
+| [humanize-chinese-until-clean](humanize-chinese-until-clean/) | 通过 review→修改 循环把一个中文文件里的翻译腔改到零：每轮派 reviewer 挑机翻味，自己核实每条发现，改掉真问题，连续两轮零新发现即停。 |
 
 ## Install
 
