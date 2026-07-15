@@ -12,6 +12,8 @@ Each subdirectory is a self-contained skill with a `SKILL.md` entry point.
 | [to-kanban](to-kanban/) | 把一份需求（PRD / 需求文档 / 一句口述）拆成一张可直接执行的 Obsidian kanban-plugin 看板——列管时间窗口、标签管功能模块、勾管状态，并预留 icafe 卡号回填接口。 |
 | [voice-memo-manager](voice-memo-manager/) | 列出、转写、摘要、删除通过 iCloud 同步的 Apple 语音备忘录——封装了元数据提取、转写脚本与删除流程。 |
 | [primary-contradiction](primary-contradiction/) | 从一段讨论或一件事里识别出主要矛盾与次要矛盾，锚定起决定作用的那处对立，并指出先动哪里。 |
+| [publish-skill](publish-skill/) | 把本地 Skill 发布到 GitHub 仓库 ooneko/skills——复制目录、更新 README 表格、提交并推送。 |
+| [review-until-clean](review-until-clean/) | 一个驱动代码库走向零 review 问题的紧循环：独立派发 reviewer，亲自逐一核实每条发现，只修必须修的，循环直到干净。 |
 
 ## Install
 
